@@ -7,7 +7,7 @@ import redis
 app = Flask(__name__)
 
 GUMLOOP_WEBHOOK_URL = os.environ.get('GUMLOOP_WEBHOOK_URL')
-REDIS_URL = os.environ.get('REDIS_URL')  # URL Redis Upstash
+REDIS_URL = os.environ.get('REDIS_URL')
 
 # Connexion Redis
 redis_client = redis.from_url(REDIS_URL, decode_responses=True) if REDIS_URL else None
@@ -24,17 +24,11 @@ def telegram_webhook():
         print(f"Data complete: {data}")
         
         if 'message' in data and 'text' in data['message']:
-            # Récupérer le username de l'expéditeur
-            username = data['message'].get('from', {}).get('username', '').lower()
+            username = data['message'].get('from', {}).get('username', 'unknown')
             telegram_message = data['message']['text']
             
             print(f"Username: @{username}")
             print(f"Message texte: {telegram_message}")
-            
-            # FILTRE 1 : Vérifier que c'est @Rick
-            if username != 'rick':  # Remplacez 'rick' par le vrai username
-                print(f"❌ Message ignoré - pas de @Rick (reçu: @{username})")
-                return {"status": "ignored - not Rick"}, 200
             
             # EXTRACTION : Ticker et Contract Address
             ticker_match = re.search(r'\$[A-Z0-9]+', telegram_message)
@@ -43,14 +37,14 @@ def telegram_webhook():
             contract_match = re.search(r'[a-zA-Z0-9]{40,}', telegram_message)
             contract = contract_match.group(0) if contract_match else None
             
-            # FILTRE 2 : Vérifier présence ticker ET contract
+            # FILTRE 1 : Vérifier présence ticker ET contract
             if not (ticker and contract):
-                print(f"❌ Message de @Rick incomplet (ticker: {ticker}, CA: {contract})")
+                print(f"❌ Message incomplet (ticker: {ticker}, CA: {contract})")
                 return {"status": "ignored - incomplete"}, 200
             
             print(f"📌 Extrait - Ticker: {ticker}, CA: {contract}")
             
-            # FILTRE 3 : Vérifier si CA déjà vu (doublon)
+            # FILTRE 2 : Vérifier si CA déjà vu (doublon)
             if redis_client:
                 if redis_client.exists(f"ca:{contract}"):
                     print(f"⚠️ CA déjà vu - doublon ignoré: {contract}")
