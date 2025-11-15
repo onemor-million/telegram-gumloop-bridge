@@ -30,19 +30,16 @@ def telegram_webhook():
             print(f"Username: @{username}")
             print(f"Message texte: {telegram_message}")
             
-            # EXTRACTION : Ticker et Contract Address
-            ticker_match = re.search(r'\$[A-Z0-9]+', telegram_message)
-            ticker = ticker_match.group(0) if ticker_match else None
-            
+            # EXTRACTION : Contract Address (40+ caractères alphanumériques)
             contract_match = re.search(r'[a-zA-Z0-9]{40,}', telegram_message)
             contract = contract_match.group(0) if contract_match else None
             
-            # FILTRE 1 : Vérifier présence ticker ET contract
-            if not (ticker and contract):
-                print(f"❌ Message incomplet (ticker: {ticker}, CA: {contract})")
-                return {"status": "ignored - incomplete"}, 200
+            # FILTRE 1 : Vérifier présence du contract
+            if not contract:
+                print(f"❌ Pas de CA détecté")
+                return {"status": "ignored - no contract"}, 200
             
-            print(f"📌 Extrait - Ticker: {ticker}, CA: {contract}")
+            print(f"📌 CA détecté: {contract}")
             
             # FILTRE 2 : Vérifier si CA déjà vu (doublon)
             if redis_client:
@@ -56,13 +53,12 @@ def telegram_webhook():
             else:
                 print(f"⚠️ Redis non configuré - détection doublons désactivée")
             
-            # ✅ Message valide : envoi à Gumloop
-            print(f"✅ Envoi à Gumloop")
+            # ✅ CA valide : envoi à Gumloop pour analyse
+            print(f"✅ Envoi à Gumloop pour analyse")
             payload = {
-                "ticker": ticker,
                 "contract": contract
             }
-            print(f"Payload structuré: {payload}")
+            print(f"Payload: {payload}")
             print(f"URL Gumloop: {GUMLOOP_WEBHOOK_URL}")
             
             response = requests.post(
