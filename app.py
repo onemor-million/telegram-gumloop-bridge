@@ -14,20 +14,33 @@ def home():
 def telegram_webhook():
     try:
         data = request.json
+        print(f"=== MESSAGE RECU DE TELEGRAM ===")
+        print(f"Data complete: {data}")
         
         if 'message' in data and 'text' in data['message']:
             telegram_message = data['message']['text']
+            print(f"Message texte: {telegram_message}")
             
-            requests.post(
+            payload = {"telegram_message": telegram_message}
+            print(f"Envoi a Gumloop avec payload: {payload}")
+            print(f"URL Gumloop: {GUMLOOP_WEBHOOK_URL}")
+            
+            response = requests.post(
                 GUMLOOP_WEBHOOK_URL,
-                json={"telegram_message": telegram_message}
+                json=payload,
+                timeout=30
             )
+            
+            print(f"Reponse Gumloop - Status: {response.status_code}")
+            print(f"Reponse Gumloop - Body: {response.text}")
             
             return {"status": "ok"}, 200
         
+        print("Pas de message texte trouve")
         return {"status": "no message"}, 200
     
     except Exception as e:
+        print(f"ERREUR: {str(e)}")
         return {"status": "error"}, 500
 
 if __name__ == '__main__':
