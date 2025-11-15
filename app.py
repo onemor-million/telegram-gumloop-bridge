@@ -2,10 +2,15 @@ from flask import Flask, request
 import requests
 import os
 import re
+import redis
 
 app = Flask(__name__)
 
 GUMLOOP_WEBHOOK_URL = os.environ.get('GUMLOOP_WEBHOOK_URL')
+REDIS_URL = os.environ.get('REDIS_URL')  # URL Redis Upstash
+
+# Connexion Redis
+redis_client = redis.from_url(REDIS_URL, decode_responses=True) if REDIS_URL else None
 
 @app.route('/', methods=['GET'])
 def home():
@@ -27,22 +32,43 @@ def telegram_webhook():
             print(f"Message texte: {telegram_message}")
             
             # FILTRE 1 : Vérifier que c'est @Rick
-            if username != 'rick':  # Remplacez 'rick' par le vrai username si différent
+            if username != 'rick':  # Remplacez 'rick' par le vrai username
                 print(f"❌ Message ignoré - pas de @Rick (reçu: @{username})")
                 return {"status": "ignored - not Rick"}, 200
             
-            # FILTRE 2 : Vérifier présence du ticker ($) ET contract (40+ caractères alphanumériques)
-            has_ticker = '$' in telegram_message
-            has_contract = bool(re.search(r'[a-zA-Z0-9]{40,}', telegram_message))
+            # EXTRACTION : Ticker et Contract Address
+            ticker_match = re.search(r'\$[A-Z0-9]+', telegram_message)
+            ticker = ticker_match.group(0) if ticker_match else None
             
-            if not (has_ticker and has_contract):
-                print(f"❌ Message de @Rick ignoré - incomplet (ticker: {has_ticker}, CA: {has_contract})")
+            contract_match = re.search(r'[a-zA-Z0-9]{40,}', telegram_message)
+            contract = contract_match.group(0) if contract_match else None
+            
+            # FILTRE 2 : Vérifier présence ticker ET contract
+            if not (ticker and contract):
+                print(f"❌ Message de @Rick incomplet (ticker: {ticker}, CA: {contract})")
                 return {"status": "ignored - incomplete"}, 200
             
-            # ✅ Message valide : de @Rick avec ticker + CA
-            print(f"✅ Message complet de @Rick - Envoi à Gumloop")
-            payload = {"telegram_message": telegram_message}
-            print(f"Envoi a Gumloop avec payload: {payload}")
+            print(f"📌 Extrait - Ticker: {ticker}, CA: {contract}")
+            
+            # FILTRE 3 : Vérifier si CA déjà vu (doublon)
+            if redis_client:
+                if redis_client.exists(f"ca:{contract}"):
+                    print(f"⚠️ CA déjà vu - doublon ignoré: {contract}")
+                    return {"status": "ignored - duplicate CA"}, 200
+                
+                # Enregistrer le CA (expire après 30 jours)
+                redis_client.setex(f"ca:{contract}", 2592000, "1")
+                print(f"✅ Nouveau CA enregistré: {contract}")
+            else:
+                print(f"⚠️ Redis non configuré - détection doublons désactivée")
+            
+            # ✅ Message valide : envoi à Gumloop
+            print(f"✅ Envoi à Gumloop")
+            payload = {
+                "ticker": ticker,
+                "contract": contract
+            }
+            print(f"Payload structuré: {payload}")
             print(f"URL Gumloop: {GUMLOOP_WEBHOOK_URL}")
             
             response = requests.post(
